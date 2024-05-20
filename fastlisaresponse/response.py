@@ -264,7 +264,7 @@ class pyResponseTDI(object):
         self.E_in = self.xp.asarray(E_in)
 
     def _init_orbit_information(
-        self, orbit_module=None, max_t_orbits=None, orbit_file=None, order=0,
+        self, orbit_module=None, max_t_orbits=None, orbit_file=None, order=0, t_init=0,
     ):
         """Initialize orbital information"""
 
@@ -301,35 +301,25 @@ class pyResponseTDI(object):
             )
 
             # get info from the file
-            out = {}
             with h5py.File(orbit_file, "r") as f:
-                for key in f["tcb"]:
-                    out[key] = f["tcb"][key][:]
 
-            # get t and normalize so first point is at t=0
-            t_in = out["t"]
-            t_in = t_in - t_in[0]
-            length_in = len(t_in)
+                # get time information
+                t_in = np.arange(f.attrs["size"]) * f.attrs["dt"] - t_init
+                
+                # get L information
+                L_in = []
+                column_order = [12, 23, 31, 13, 32, 21]
+                for ilink in range(self.nlinks):
+                    sc0 = self.link_space_craft_0_in[ilink] + 1
+                    sc1 = self.link_space_craft_1_in[ilink] + 1
+                    column_index = column_order.index(int(str(sc0) + str(sc1)))
+                    L_in.append(f["tcb/ltt"][:, column_index])
 
-            # get x and L information
-            x_in = []
-            for i in range(3):
-                for let in ["x", "y", "z"]:
-                    x_in.append(out["sc_" + str(i + 1)][let])
-
-            L_in = []
-
-            for link_i in range(self.nlinks):
-                sc0 = self.link_space_craft_0_in[link_i] + 1
-                sc1 = self.link_space_craft_1_in[link_i] + 1
-
-                x_val = out["sc_" + str(sc0)]["x"] - out["sc_" + str(sc1)]["x"]
-                y_val = out["sc_" + str(sc0)]["y"] - out["sc_" + str(sc1)]["y"]
-                z_val = out["sc_" + str(sc0)]["z"] - out["sc_" + str(sc1)]["z"]
-
-                norm = np.sqrt(x_val ** 2 + y_val ** 2 + z_val ** 2)
-
-                L_in.append(out["l_" + str(sc0) + str(sc1)]["tt"])
+                # get x information
+                x_in = []
+                for isc in range(3):
+                    for icoord in range(3):
+                        x_in.append(f["tcb/x"][:, isc, icoord])
 
             # constrain maximum time used for orbits
             if max_t_orbits is not None and max_t_orbits < t_in[-1]:
